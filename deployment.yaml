@@ -22,7 +22,7 @@ objects:
           apiPath: widgets
       podSpec:
         #image: ${IMAGE}:${IMAGE_TAG}
-        image: jlsherri/widget-app:latest
+        image: quay.io/jlsherri/widget-app:latest
         livenessProbe:
           failureThreshold: 3
           httpGet:
