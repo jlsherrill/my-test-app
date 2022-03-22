@@ -27,7 +27,7 @@ objects:
           failureThreshold: 3
           httpGet:
             path: /
-            port: 8000
+            port: 8080
             scheme: HTTP
           initialDelaySeconds: 35
           periodSeconds: 5
@@ -37,7 +37,7 @@ objects:
           failureThreshold: 3
           httpGet:
             path: /ping
-            port: 8000
+            port: 8080
             scheme: HTTP
           initialDelaySeconds: 35
           periodSeconds: 5
