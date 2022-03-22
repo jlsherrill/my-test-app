@@ -13,8 +13,6 @@ type Widget struct {
 	Id     int64  `form:"id"`
 }
 
-//my_widgets := make([]widget, 5, 10)
-
 func main() {
 	my_widgets := make(map[int64]Widget)
 
