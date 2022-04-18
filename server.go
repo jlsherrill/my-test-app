@@ -87,9 +87,11 @@ func main() {
 	r.POST("/widgets/", func(c *gin.Context) {
 		var widget Widget
 		if c.BindJSON(&widget) == nil {
+			if widget.Name == "send" {
+				sendMessage(c, widget.Id, widget.Name)
+			}
 			log.Println(widget.Id)
 			log.Println(widget.Name)
-			sendMessage(c, widget.Id, widget.Name)
 			myWidgets[widget.Id] = widget
 
 			c.JSON(http.StatusOK, widget)
