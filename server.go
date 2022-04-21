@@ -9,6 +9,7 @@ import (
 	kafka "github.com/segmentio/kafka-go"
 	"log"
 	"strconv"
+	"time"
 )
 import "net/http"
 
@@ -40,35 +41,85 @@ func getTopic() (string, error) {
 
 }
 
-func getKafkaWriter() *kafka.Writer {
-	kafkaUrl, _ := getUrl()
-	topic, _ := getTopic()
+func getKafkaWriter() (*kafka.Writer, error) {
+	if !clowder.IsClowderEnabled() {
+		return nil, errors.New("Clowder disabled")
+	}
+	kafkaUrl, urlError := getUrl()
+	if urlError != nil {
+		return nil, urlError
+	}
+	topic, topicError := getTopic()
+	if topicError != nil {
+		return nil, topicError
+	}
 	return &kafka.Writer{
 		Addr:     kafka.TCP(kafkaUrl),
 		Topic:    topic,
 		Balancer: &kafka.LeastBytes{},
-	}
+	}, nil
 }
 
-func sendMessage(context context.Context, id int64, name string) {
+func sendMessage(context context.Context, writer *kafka.Writer, id int64, name string) {
 	if clowder.IsClowderEnabled() {
-		kafkaWriter := getKafkaWriter()
-
 		msg := kafka.Message{
 			Key:   []byte(fmt.Sprintf("id-%s", id)),
 			Value: []byte(name),
 		}
-		err := kafkaWriter.WriteMessages(context, msg)
+		err := writer.WriteMessages(context, msg)
 
 		if err == nil {
-			log.Fatalln("Sent message")
+			log.Println("Sent message")
 		} else {
 			log.Fatalln(err)
 		}
+	} else {
+		log.Println("clowder disabled")
 	}
 }
 
-func main() {
+func listener() {
+	if !clowder.IsClowderEnabled() {
+		log.Println("clowder disabled")
+		return
+	}
+	kafkaUrl, urlError := getUrl()
+	if urlError != nil {
+		return
+	}
+	topic, topicError := getTopic()
+	if topicError != nil {
+		return
+	}
+	partition := 0
+	conn, err := kafka.DialLeader(context.Background(), "tcp", kafkaUrl, topic, partition)
+	if err != nil {
+		log.Fatal("failed to dial leader:", err)
+	}
+
+	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
+	batch := conn.ReadBatch(10e3, 1e6)
+	b := make([]byte, 10e3) // 10KB max per message
+	for {
+		n, err := batch.Read(b)
+		if err != nil {
+			break
+		}
+		fmt.Println(string(b[:n]))
+	}
+}
+
+func apiServer() {
+	kafkaWriter, error := getKafkaWriter()
+	if error != nil {
+		log.Println("Could not initizlize kafka writer")
+		log.Println(error)
+	}
+	kafkaWriter.BatchTimeout, error = time.ParseDuration("100ms")
+	if error != nil {
+		log.Println(error)
+	}
+
 	myWidgets := make(map[int64]Widget)
 
 	r := gin.Default()
@@ -88,7 +139,7 @@ func main() {
 		var widget Widget
 		if c.BindJSON(&widget) == nil {
 			if widget.Name == "send" {
-				sendMessage(c, widget.Id, widget.Name)
+				sendMessage(c, kafkaWriter, widget.Id, widget.Name)
 			}
 			log.Println(widget.Id)
 			log.Println(widget.Name)
@@ -107,4 +158,8 @@ func main() {
 		}
 	})
 	r.Run(":8000") // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
+}
+
+func main() {
+	apiServer()
 }
