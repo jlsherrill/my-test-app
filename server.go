@@ -165,9 +165,12 @@ func apiServer(pingOnly bool) {
 
 func main() {
 	if len(os.Args) > 1 && os.Args[1] == "listener" {
+
 		go func() {
 			apiServer(true)
 		}()
+		log.Println("starting listener")
+		time.Sleep(10 * time.Second)
 		listener()
 	} else {
 		apiServer(false)

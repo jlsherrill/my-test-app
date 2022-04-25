@@ -74,7 +74,7 @@ objects:
       podSpec:
         image: ${IMAGE}:${IMAGE_TAG}
         args:
-        - /usr/bin/widgets 
+        - /widgets 
         - listener
         livenessProbe:
           failureThreshold: 3
