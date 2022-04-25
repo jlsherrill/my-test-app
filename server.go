@@ -8,6 +8,7 @@ import (
 	clowder "github.com/redhatinsights/app-common-go/pkg/api/v1"
 	kafka "github.com/segmentio/kafka-go"
 	"log"
+	"os"
 	"strconv"
 	"time"
 )
@@ -109,17 +110,7 @@ func listener() {
 	}
 }
 
-func apiServer() {
-	kafkaWriter, error := getKafkaWriter()
-	if error != nil {
-		log.Println("Could not initizlize kafka writer")
-		log.Println(error)
-	}
-	kafkaWriter.BatchTimeout, error = time.ParseDuration("100ms")
-	if error != nil {
-		log.Println(error)
-	}
-
+func apiServer(pingOnly bool) {
 	myWidgets := make(map[int64]Widget)
 
 	r := gin.Default()
@@ -128,38 +119,57 @@ func apiServer() {
 			"message": "pong",
 		})
 	})
-	r.GET("/widgets/", func(c *gin.Context) {
-		list := make([]Widget, 0, len(myWidgets))
-		for _, w := range myWidgets {
-			list = append(list, w)
+	if !pingOnly {
+		kafkaWriter, error := getKafkaWriter()
+		if error != nil {
+			log.Println("Could not initizlize kafka writer")
+			log.Println(error)
 		}
-		c.JSON(http.StatusOK, list)
-	})
-	r.POST("/widgets/", func(c *gin.Context) {
-		var widget Widget
-		if c.BindJSON(&widget) == nil {
-			if widget.Name == "send" {
-				sendMessage(c, kafkaWriter, widget.Id, widget.Name)
-			}
-			log.Println(widget.Id)
-			log.Println(widget.Name)
-			myWidgets[widget.Id] = widget
+		kafkaWriter.BatchTimeout, error = time.ParseDuration("100ms")
+		if error != nil {
+			log.Println(error)
+		}
 
-			c.JSON(http.StatusOK, widget)
-		}
-	})
-	r.GET("/widgets/:id", func(c *gin.Context) {
-		id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
-		widget, found := myWidgets[id]
-		if found {
-			c.JSON(http.StatusOK, widget)
-		} else {
-			c.String(404, "Not Found")
-		}
-	})
+		r.GET("/widgets/", func(c *gin.Context) {
+			list := make([]Widget, 0, len(myWidgets))
+			for _, w := range myWidgets {
+				list = append(list, w)
+			}
+			c.JSON(http.StatusOK, list)
+		})
+		r.POST("/widgets/", func(c *gin.Context) {
+			var widget Widget
+			if c.BindJSON(&widget) == nil {
+				if widget.Name == "send" {
+					sendMessage(c, kafkaWriter, widget.Id, widget.Name)
+				}
+				log.Println(widget.Id)
+				log.Println(widget.Name)
+				myWidgets[widget.Id] = widget
+
+				c.JSON(http.StatusOK, widget)
+			}
+		})
+		r.GET("/widgets/:id", func(c *gin.Context) {
+			id, _ := strconv.ParseInt(c.Param("id"), 10, 64)
+			widget, found := myWidgets[id]
+			if found {
+				c.JSON(http.StatusOK, widget)
+			} else {
+				c.String(404, "Not Found")
+			}
+		})
+	}
 	r.Run(":8000") // listen and serve on 0.0.0.0:8080 (for windows "localhost:8080")
 }
 
 func main() {
-	apiServer()
+	if len(os.Args) > 1 && os.Args[1] == "listener" {
+		go func() {
+			apiServer(true)
+		}()
+		listener()
+	} else {
+		apiServer(false)
+	}
 }
