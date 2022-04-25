@@ -9,7 +9,9 @@ import (
 	kafka "github.com/segmentio/kafka-go"
 	"log"
 	"os"
+	"os/signal"
 	"strconv"
+	"syscall"
 	"time"
 )
 import "net/http"
@@ -108,15 +110,17 @@ func listener() {
 	defer reader.Close()
 
 	for {
+		log.Println("Start Read")
 		m, err := reader.ReadMessage(context.Background())
 
 		if err != nil {
-			log.Fatal(err)
+			log.Println(err)
 			break
 		}
-		log.Fatal("Read from queue:")
-		log.Fatal(string(m.Value))
+		log.Println("Read from queue:")
+		log.Println(string(m.Value))
 	}
+	log.Println("END")
 }
 
 func apiServer(pingOnly bool) {
@@ -177,8 +181,15 @@ func main() {
 			apiServer(true)
 		}()
 		log.Println("starting listener")
-		time.Sleep(10 * time.Second)
-		listener()
+		go func() {
+			listener()
+		}()
+		signals := make(chan os.Signal, 1)
+		signal.Notify(signals, syscall.SIGTERM, syscall.SIGINT)
+		select {
+		case signal := <-signals:
+			log.Println("Shutting down due to signal: ", signal)
+		}
 	} else {
 		apiServer(false)
 	}
