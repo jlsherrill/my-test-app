@@ -79,6 +79,17 @@ func sendMessage(context context.Context, writer *kafka.Writer, id int64, name s
 	}
 }
 
+func getKafkaReader(kafkaURL, topic string) *kafka.Reader {
+	brokers := []string{kafkaURL}
+	return kafka.NewReader(kafka.ReaderConfig{
+		Brokers:   brokers,
+		Partition: 0,
+		Topic:     topic,
+		MinBytes:  10e3, // 10KB
+		MaxBytes:  10e6, // 10MB
+	})
+}
+
 func listener() {
 	if !clowder.IsClowderEnabled() {
 		log.Println("clowder disabled")
@@ -92,21 +103,19 @@ func listener() {
 	if topicError != nil {
 		return
 	}
-	partition := 0
-	conn, err := kafka.DialLeader(context.Background(), "tcp", kafkaUrl, topic, partition)
-	if err != nil {
-		log.Fatal("failed to dial leader:", err)
-	}
 
-	conn.SetReadDeadline(time.Now().Add(10 * time.Second))
-	batch := conn.ReadBatch(10e3, 1e6)
-	b := make([]byte, 10e3) // 10KB max per message
+	reader := getKafkaReader(kafkaUrl, topic)
+	defer reader.Close()
+
 	for {
-		n, err := batch.Read(b)
+		m, err := reader.ReadMessage(context.Background())
+
 		if err != nil {
+			log.Fatal(err)
 			break
 		}
-		fmt.Println(string(b[:n]))
+		log.Fatal("Read from queue:")
+		log.Fatal(string(m.Value))
 	}
 }
 
@@ -140,9 +149,7 @@ func apiServer(pingOnly bool) {
 		r.POST("/widgets/", func(c *gin.Context) {
 			var widget Widget
 			if c.BindJSON(&widget) == nil {
-				if widget.Name == "send" {
-					sendMessage(c, kafkaWriter, widget.Id, widget.Name)
-				}
+				sendMessage(c, kafkaWriter, widget.Id, widget.Name)
 				log.Println(widget.Id)
 				log.Println(widget.Name)
 				myWidgets[widget.Id] = widget
